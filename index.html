@@ -31,14 +31,20 @@
   .bar .lbl { font-size:15px; font-weight:600; }
   .bar .meta { font-size:12px; color:var(--sub); }
   .msg { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
-  .msg .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .msg .top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
   .msg .from { font-size:15px; font-weight:600; }
-  .msg .time { font-size:12px; color:var(--sub); white-space:nowrap; }
   .msg .body { font-size:15px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+  .copybtn { width:auto; margin-top:0; padding:6px 12px; font-size:13px; font-weight:600;
+    background:#eef4ff; color:#1554c0; border:1px solid #cdddfb; border-radius:8px; white-space:nowrap; cursor:pointer; }
+  .copybtn:active { opacity:.7; }
   .empty { text-align:center; color:var(--sub); font-size:15px; padding:30px 10px; }
   .hidden { display:none; }
   .toprow { display:flex; gap:10px; align-items:center; margin:0 2px 12px; }
   .toprow button { width:auto; margin-top:0; padding:9px 14px; font-size:14px; }
+  .toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%);
+    background:#222; color:#fff; font-size:14px; padding:10px 18px; border-radius:20px;
+    opacity:0; transition:opacity .2s; pointer-events:none; z-index:50; }
+  .toast.show { opacity:.92; }
 </style>
 </head>
 <body>
@@ -69,6 +75,7 @@
     <div id="list"></div>
   </div>
 </div>
+<div id="toast" class="toast"></div>
 
 <script>
   var SERVER = "https://script.google.com/macros/s/AKfycbyq8ao8KbhmxYU_mF7rvoWIhyCJKd922WTMigs6nWvVaXK4VvZqRiZ-8IljPfWNcY5s/exec";
@@ -121,10 +128,13 @@
     $("viewer").classList.remove("hidden");
   }
 
+  var lastMsgs = [];
+
   function render(res) {
     $("label").textContent = res.label || "문자";
     var list = $("list");
     var msgs = res.messages || [];
+    lastMsgs = msgs;
     $("meta").textContent = msgs.length + "건 · " + new Date().toLocaleTimeString("ko-KR", {hour:"2-digit",minute:"2-digit"}) + " 기준";
     if (!msgs.length) { list.innerHTML = '<div class="empty">아직 받은 문자가 없습니다.</div>'; return; }
     var html = "";
@@ -132,7 +142,7 @@
       var m = msgs[i];
       html += '<div class="msg"><div class="top">' +
         '<span class="from">' + esc(fmtPhone(m["보낸번호"])) + '</span>' +
-        '<span class="time">' + esc(m["수신시각"]) + '</span></div>' +
+        '<button class="copybtn" data-idx="' + i + '">복사</button></div>' +
         '<div class="body">' + esc(m["내용"]) + '</div></div>';
     }
     list.innerHTML = html;
@@ -142,6 +152,33 @@
     return String(s == null ? "" : s)
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
+
+  function showToast(t) {
+    var el = $("toast");
+    el.textContent = t; el.classList.add("show");
+    setTimeout(function(){ el.classList.remove("show"); }, 1200);
+  }
+
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function(){ showToast("복사됨"); }, function(){ fallbackCopy(t); });
+    } else { fallbackCopy(t); }
+  }
+  function fallbackCopy(t) {
+    var ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.top = "0"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand("copy"); showToast("복사됨"); } catch (e) { showToast("복사 실패"); }
+    document.body.removeChild(ta);
+  }
+
+  $("list").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".copybtn") : null;
+    if (!btn) return;
+    var idx = parseInt(btn.getAttribute("data-idx"), 10);
+    var m = lastMsgs[idx];
+    if (m) copyText(String(m["내용"] == null ? "" : m["내용"]));
+  });
 
   function load(isAuto) {
     var code = getCode();
